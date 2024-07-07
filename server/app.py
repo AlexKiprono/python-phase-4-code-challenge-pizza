@@ -24,6 +24,7 @@ api = Api(app)
 def index():
     return "<h1>Code challenge</h1>"
 
+
 # FETCH ALL RESTAURANTS
 @app.route('/restaurants', methods=['GET'])
 def get_restaurants():

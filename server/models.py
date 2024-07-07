@@ -1,68 +1,97 @@
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import MetaData
+from sqlalchemy.orm import validates
+from sqlalchemy.ext.associationproxy import association_proxy
+from sqlalchemy_serializer import SerializerMixin
 
-db = SQLAlchemy()
+metadata = MetaData(
+    naming_convention={
+        "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    }
+)
 
-class Restaurant(db.Model):
-    __tablename__ = 'restaurants'
-    
+db = SQLAlchemy(metadata=metadata)
+
+
+class Restaurant(db.Model, SerializerMixin):
+    __tablename__ = "restaurants"
+
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String)
     address = db.Column(db.String)
-    
+
+    # add relationship
+    pizzas = db.relationship('RestaurantPizza', back_populates='restaurant', cascade="all, delete-orphan")
+
+    # add serialization rules
+    serialize_rules = ('-pizzas',)
+
+    def __repr__(self):
+        return f"<Restaurant {self.name}>"
+
     def to_dict(self):
-        return {
+        data = {
             'id': self.id,
             'name': self.name,
             'address': self.address,
-            'restaurant_pizzas': [pizza.to_dict() for pizza in self.restaurant_pizzas]
+            'restaurant_pizzas': [restaurant_pizza.to_dict() for restaurant_pizza in self.pizzas]
         }
-    
-    def __repr__(self):
-        return f'<Restaurant {self.name}>'
+        return data
 
-class Pizza(db.Model):
-    __tablename__ = 'pizzas'
-    
+class Pizza(db.Model, SerializerMixin):
+    __tablename__ = "pizzas"
+
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String)
     ingredients = db.Column(db.String)
-    
+
+    # add relationship
+    restaurants = db.relationship('RestaurantPizza', back_populates='pizza', cascade="all, delete-orphan")
+
+    # add serialization rules
+    serialize_rules = ('-restaurants',)
+
+    def __repr__(self):
+        return f"<Pizza {self.name}, {self.ingredients}>"
+
     def to_dict(self):
-        return {
+        data = {
             'id': self.id,
             'name': self.name,
-            'ingredients': self.ingredients,
+            'ingredients': self.ingredients
         }
-    
-    def __repr__(self):
-        return f'<Pizza {self.name}>'
+        return data
 
-class RestaurantPizza(db.Model):
-    __tablename__ = 'restaurant_pizzas'
-    
+class RestaurantPizza(db.Model, SerializerMixin):
+    __tablename__ = "restaurant_pizzas"
+
     id = db.Column(db.Integer, primary_key=True)
+    price = db.Column(db.Integer, nullable=False)
     restaurant_id = db.Column(db.Integer, db.ForeignKey('restaurants.id'))
     pizza_id = db.Column(db.Integer, db.ForeignKey('pizzas.id'))
-    price = db.Column(db.Integer, nullable=False)
-    
-    restaurant = db.relationship('Restaurant', backref=db.backref('restaurant_pizzas', cascade='all, delete-orphan'))
-    pizza = db.relationship('Pizza', backref=db.backref('restaurant_pizzas', cascade='all, delete-orphan'))
-    
+
+    # add relationships
+    restaurant = db.relationship('Restaurant', back_populates='pizzas')
+    pizza = db.relationship('Pizza', back_populates='restaurants')
+
+    # add serialization rules
+    serialize_rules = ('-restaurant', '-pizza')
+
+    # add validation
+    @validates('price')
+    def validate_price(self, key, price):
+        assert 1 <= price <= 30, "Price must be between 1 and 30"
+        return price
+
+    def __repr__(self):
+        return f"<RestaurantPizza ${self.price}>"
+
     def to_dict(self):
-        return {
+        data = {
             'id': self.id,
             'price': self.price,
-            'restaurant': {
-                'id': self.restaurant.id,
-                'name': self.restaurant.name,
-                'address': self.restaurant.address
-            },
-            'pizza': {
-                'id': self.pizza.id,
-                'name': self.pizza.name,
-                'ingredients': self.pizza.ingredients
-            }
+            'pizza_id': self.pizza_id,
+            'restaurant_id': self.restaurant_id,
+            'pizza': self.pizza.to_dict()
         }
-    
-    def __repr__(self):
-        return f'<RestaurantPizza {self.restaurant.name} - {self.pizza.name} (${self.price})>'
+        return data
